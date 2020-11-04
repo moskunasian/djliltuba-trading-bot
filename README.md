@@ -6,7 +6,7 @@
     - Algorithmic trading library, event-driven system for backtesting.
     - More functionality for TA of financial market data.
 
--   **Data Provider**     - [Finnhub](https://finnhub.io/)
+-   **Data Provider**     - [Finnhub](https://finnhub.io/) & [yfinance](https://github.com/ranaroussi/yfinance)
     - Real-time RESTful APIs/Websocket for stock, currency, and crypto data.
 
 -   **Execution Broker**  - [Alpaca](https://alpaca.markets/) 
