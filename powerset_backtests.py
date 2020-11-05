@@ -1,8 +1,9 @@
 # powerset_backtests.py
 # 11.01.2020
 
-import ta
+import ta 
 import sys
+import uuid
 import os.path
 import datetime
 import pandas as pd
@@ -12,6 +13,10 @@ import backtrader.feeds as btfeeds
 from itertools import chain, combinations
 
 START_CASH = 100000.0
+RSI_SELL_FLAG = 70
+RSI_BUY_FLAG = 30
+START_DATE = "2005-01-01"
+END_DATE = "2020-12-31"
 
 class PermuteStrategy(bt.Strategy):
     params = (
@@ -27,26 +32,26 @@ class PermuteStrategy(bt.Strategy):
         self.order =        None
         self.buy_price =    None
 
+        # indicators being pre calculated, although not always used
+        self.macd = bt.indicators.MACD(self.datas[0])
+        self.m_cross = bt.indicators.CrossOver(self.macd.macd, self.macd.signal)
+        self.rsi = bt.talib.RSI(self.datas[0])
+
 
     def retrieve_rsi(self):
-        # ta.momentum.RSIIndicator(close)
-        return
+        if self.rsi[0] <= RSI_BUY_FLAG:
+            return 1
+        elif self.rsi[0] >= RSI_SELL_FLAG:
+            return -1
+        return 0
 
 
     def retrieve_macd(self):
-        # ta.trend.MACD(close)
-        return
-
-    
-    def retrieve_bbands(self):
-        # ta.volatility.bollinger_hband_indicator(close)
-        # ta.volatility.bollinger_lband_indicator(close)
-        return
-
-    
-    def retrieve_vwap(self):
-        # ta.volume.VolumeWeightedAveragePrice(high, low, close, volume)
-        return
+        if self.m_cross[0] > 0:
+            return 1
+        elif self.m_cross[0] < 0:
+            return -1
+        return 0
 
 
     def log_event(self, txt, dt=None):
@@ -54,6 +59,7 @@ class PermuteStrategy(bt.Strategy):
         print("%s, %s" % (dt.isoformat(), txt))
 
 
+    
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
             return
@@ -76,33 +82,22 @@ class PermuteStrategy(bt.Strategy):
             self.log_event("Order Canceled/Margin/Rejected")
 
         self.order = None
+        
 
-
-        def notify_trade(self, trade):
-            if not trade.isclosed:
-                return
-
-            self.log_event("Operation Profit, Gross %.2f, NET %.2f" %
-                    (trade.pnl, trade.pnl_comm))
-
-
-    # this will be holding the strategy, once available to be referenced
     def next(self):
-        self.log_event("Close, %.2f" % self.date_close[0])
-
         if self.order:
             return
 
+        flag_sum = 0
+        for fxn in self.params.ta_set:
+            flag_sum += fxn(self)
+    
         if not self.position:
-            # placeholder buy strat for initial testing
-            # if all in current set return true, buy
-            if self.date_close[0] < self.date_close[-1]:
-                if self.date_close[-1] < self.date_close[-2]:
-                    self.log_event("BUY CREATE, %.2f" % self.date_close[0])
-                    self.order = self.buy()
+            if flag_sum == len(self.params.ta_set):
+                self.log_event("BUY CREATE, %.2f" % self.date_close[0])
+                self.order = self.buy()
         else:
-            # placeholder sell strat for initial testing
-            if len(self) >= (self.bar_executed + 5):
+            if flag_sum == (len(self.params.ta_set) * -1):
                 self.log_event("SELL CREATE, %.2f" % self.date_close[0])
                 self.order = self.sell()
 
@@ -118,30 +113,29 @@ def retrieve_sptickers():
 
 
 if __name__ == '__main__':
-    indicator_fxns = [PermuteStrategy.retrieve_rsi, 
-                      PermuteStrategy.retrieve_macd, 
-                      PermuteStrategy.retrieve_bbands, 
-                      PermuteStrategy.retrieve_vwap]
+    indicator_fxns = [PermuteStrategy.retrieve_rsi, PermuteStrategy.retrieve_macd]
     powerset = indicator_powerset(indicator_fxns) 
-    # for pset in powerset:
-    # will loop and try strategy per each pset, will test just one starting out, then all
+    performance_dict = {}
 
-    cer = bt.Cerebro()
-    cer.addstrategy(PermuteStrategy, ta_set=[])
+    for ticker in retrieve_sptickers()[:2]:
+        for pset in powerset:
+            inner_perf = {}
 
-    data = yf.Ticker("MSFT")
-    data = data.history(start="2005-01-01", end="2020-12-31")
+            cer = bt.Cerebro()
+            cer.addstrategy(PermuteStrategy, ta_set=pset)
+            data = yf.Ticker("MSFT")
+            data = data.history(start="2005-01-01", end="2020-12-31")
+            data = bt.feeds.PandasData(dataname=data)
+            cer.adddata(data)
+            
+            cer.broker.setcash(START_CASH)
+            cer.addsizer(bt.sizers.FixedSize, stake=10)
+            start_cash = cer.broker.getvalue()
+            cer.run()
+            end_cash = cer.broker.getvalue()
 
-    data = bt.feeds.PandasData(dataname=data)
-    cer.adddata(data)
-    
-    cer.broker.setcash(START_CASH)
-    cer.addsizer(bt.sizers.FixedSize, stake=10)
-    start_cash = cer.broker.getvalue()
-    cer.run()
-    end_cash = cer.broker.getvalue()
-
-    # initial storage will be something along the lines of:
-    # {ticker: {final_profit: x, ta_set: []}, ticker2: { ... }}
-
-    print("Final Profit Potential: $%.2f" % (float(end_cash) - float(start_cash)))
+            inner_perf["final_profit"] = round(float(end_cash) - float(start_cash), 2)
+            inner_perf["ta_set"] = [str(x) for x in pset]
+            inner_perf["ticker"] = ticker
+            inner_perf["backtest_range"] = [START_DATE, END_DATE]
+            performance_dict[str(uuid.uuid4())] = inner_perf
