@@ -1,6 +1,7 @@
 # powerset_backtests.py
 # 11.01.2020
 
+import ta
 import sys
 import os.path
 import datetime
@@ -13,13 +14,39 @@ from itertools import chain, combinations
 START_CASH = 100000.0
 
 class PermuteStrategy(bt.Strategy):
+    params = (
+        ('ta_set', None),
+    )
 
 
     def __init__(self):
-        self.date_close = self.datas[0].close
-        self.order = None
-        self.buy_price = None
-        self.ta_set = None
+        self.date_close =   self.datas[0].close
+        self.date_high =    self.datas[0].high
+        self.date_low =     self.datas[0].low
+        self.date_volume =  self.datas[0].volume
+        self.order =        None
+        self.buy_price =    None
+
+
+    def retrieve_rsi(self):
+        # ta.momentum.RSIIndicator(close)
+        return
+
+
+    def retrieve_macd(self):
+        # ta.trend.MACD(close)
+        return
+
+    
+    def retrieve_bbands(self):
+        # ta.volatility.bollinger_hband_indicator(close)
+        # ta.volatility.bollinger_lband_indicator(close)
+        return
+
+    
+    def retrieve_vwap(self):
+        # ta.volume.VolumeWeightedAveragePrice(high, low, close, volume)
+        return
 
 
     def log_event(self, txt, dt=None):
@@ -91,15 +118,30 @@ def retrieve_sptickers():
 
 
 if __name__ == '__main__':
+    indicator_fxns = [PermuteStrategy.retrieve_rsi, 
+                      PermuteStrategy.retrieve_macd, 
+                      PermuteStrategy.retrieve_bbands, 
+                      PermuteStrategy.retrieve_vwap]
+    powerset = indicator_powerset(indicator_fxns) 
+    # for pset in powerset:
+    # will loop and try strategy per each pset, will test just one starting out, then all
+
     cer = bt.Cerebro()
-    cer.addstrategy(PermuteStrategy)
+    cer.addstrategy(PermuteStrategy, ta_set=[])
 
     data = yf.Ticker("MSFT")
-    data = data.history(start="2000-01-01", end="2000-12-31")
+    data = data.history(start="2005-01-01", end="2020-12-31")
+
     data = bt.feeds.PandasData(dataname=data)
     cer.adddata(data)
     
     cer.broker.setcash(START_CASH)
-    print("Starting Portfolio Value: %.2f" % cer.broker.getvalue())
+    cer.addsizer(bt.sizers.FixedSize, stake=10)
+    start_cash = cer.broker.getvalue()
     cer.run()
-    print("Final Portfolio Value: %.2f" % cer.broker.getvalue())
+    end_cash = cer.broker.getvalue()
+
+    # initial storage will be something along the lines of:
+    # {ticker: {final_profit: x, ta_set: []}, ticker2: { ... }}
+
+    print("Final Profit Potential: $%.2f" % (float(end_cash) - float(start_cash)))

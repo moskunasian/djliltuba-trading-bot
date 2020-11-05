@@ -2,7 +2,7 @@
 
 ## Libraries Utilized
 
--   **Trading Platform**  - [Backtrader](https://github.com/mementum/backtrader) & [ta-lib](https://github.com/mrjbq7/ta-lib)
+-   **Trading Platform**  - [Backtrader](https://github.com/mementum/backtrader) & [ta](https://github.com/bukosabino/ta)
     - Algorithmic trading library, event-driven system for backtesting.
     - More functionality for TA of financial market data.
 
