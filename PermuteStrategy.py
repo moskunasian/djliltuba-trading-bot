@@ -1,22 +1,9 @@
-# powerset_backtests.py
-# 11.01.2020
-
 import ta 
 import sys
-import uuid
 import os.path
 import datetime
-import pandas as pd
-import yfinance as yf
 import backtrader as bt
-import backtrader.feeds as btfeeds
-from itertools import chain, combinations
 
-START_CASH = 100000.0
-RSI_SELL_FLAG = 70
-RSI_BUY_FLAG = 30
-START_DATE = "2005-01-01"
-END_DATE = "2020-12-31"
 
 class PermuteStrategy(bt.Strategy):
     params = (
@@ -32,16 +19,15 @@ class PermuteStrategy(bt.Strategy):
         self.order =        None
         self.buy_price =    None
 
-        # indicators being pre calculated, although not always used
         self.macd = bt.indicators.MACD(self.datas[0])
         self.m_cross = bt.indicators.CrossOver(self.macd.macd, self.macd.signal)
-        self.rsi = bt.talib.RSI(self.datas[0])
+        self.rsi = bt.indicators.RelativeStrengthIndex(self.datas[0])
 
 
     def retrieve_rsi(self):
-        if self.rsi[0] <= RSI_BUY_FLAG:
+        if self.rsi[0] <= 30:
             return 1
-        elif self.rsi[0] >= RSI_SELL_FLAG:
+        elif self.rsi[0] >= 70:
             return -1
         return 0
 
@@ -57,7 +43,6 @@ class PermuteStrategy(bt.Strategy):
     def log_event(self, txt, dt=None):
         dt = dt or self.datas[0].datetime.date(0)
         print("%s, %s" % (dt.isoformat(), txt))
-
 
     
     def notify_order(self, order):
@@ -100,42 +85,3 @@ class PermuteStrategy(bt.Strategy):
             if flag_sum == (len(self.params.ta_set) * -1):
                 self.log_event("SELL CREATE, %.2f" % self.date_close[0])
                 self.order = self.sell()
-
-
-def indicator_powerset(indicators):
-    s = list(indicators)
-    return list(chain.from_iterable(combinations(s, r) for r in range(1, len(s) + 1)))
-
-
-def retrieve_sptickers():
-    sp_table = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')
-    return list(sp_table[0]['Symbol'])
-
-
-if __name__ == '__main__':
-    indicator_fxns = [PermuteStrategy.retrieve_rsi, PermuteStrategy.retrieve_macd]
-    powerset = indicator_powerset(indicator_fxns) 
-    performance_dict = {}
-
-    for ticker in retrieve_sptickers()[:2]:
-        for pset in powerset:
-            inner_perf = {}
-
-            cer = bt.Cerebro()
-            cer.addstrategy(PermuteStrategy, ta_set=pset)
-            data = yf.Ticker("MSFT")
-            data = data.history(start="2005-01-01", end="2020-12-31")
-            data = bt.feeds.PandasData(dataname=data)
-            cer.adddata(data)
-            
-            cer.broker.setcash(START_CASH)
-            cer.addsizer(bt.sizers.FixedSize, stake=10)
-            start_cash = cer.broker.getvalue()
-            cer.run()
-            end_cash = cer.broker.getvalue()
-
-            inner_perf["final_profit"] = round(float(end_cash) - float(start_cash), 2)
-            inner_perf["ta_set"] = [str(x) for x in pset]
-            inner_perf["ticker"] = ticker
-            inner_perf["backtest_range"] = [START_DATE, END_DATE]
-            performance_dict[str(uuid.uuid4())] = inner_perf
